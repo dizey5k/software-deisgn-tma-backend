@@ -1,0 +1,40 @@
+services:
+  backend:
+    build: .
+    container_name: tma_backend
+    restart: always
+    command: sh -c "sleep 3 && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+    networks:
+      - default
+      - proxy_net
+
+  db:
+    image: postgres:15-alpine
+    container_name: tma_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: tma_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - default
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+  proxy_net:
+    external: true
