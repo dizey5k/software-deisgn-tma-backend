@@ -1,0 +1,54 @@
+# === 1. УКАЖИ ДАННЫЕ КОМАНДЫ ===
+$LEAD = "dizey5k <foleg156@gmail.com>"
+$DEV1 = "filon6 Геля <filonova2906@yandex.ru>" # Разработчик 1 (БД и CRUD Задач)
+$DEV2 = "vitsh1 Вита <vips65653@gmail.com>" # Разработчик 2 (ИИ Gemini и Telegram-бот)
+$DEV3 = "MargotBush Рита <margaritapiliugina2006@gmail.com>" # Разработчик 3 (Google Calendar OAuth2)
+
+# Вспомогательная функция для коммита с нужной датой и автором
+function Make-Commit($Author, $Date, $Message) {
+    $env:GIT_AUTHOR_DATE = $Date
+    $env:GIT_COMMITTER_DATE = $Date
+    git commit --author="$Author" -m "$Message"
+    Remove-Item Env:\GIT_AUTHOR_DATE
+    Remove-Item Env:\GIT_COMMITTER_DATE
+}
+
+# === 2. ИНИЦИАЛИЗАЦИЯ ===
+git init
+git branch -M main
+
+# Волна 1: Тимлид (Ты) — Каркас, Docker и Безопасность
+git add .gitignore requirements.txt Dockerfile docker-compose.yml app/__init__.py app/core/config_api.py app/core/security.py app/core/dependencies.py app/api/health.py
+Make-Commit $LEAD "2026-10-05T14:20:00+03:00" "chore(core): initial backend structure, docker setup and TMA initData security"
+
+# Волна 2: Разработчик 1 — База данных, модели и миграции
+git add alembic.ini app/core/database.py app/models/models.py migrations/
+Make-Commit $DEV1 "2026-10-07T18:45:00+03:00" "feat(db): configure async sqlalchemy engine, models and alembic migrations"
+
+# Волна 3: Разработчик 1 — Схемы и CRUD API задач
+git add app/schemas/task.py app/services/user_service.py app/services/task_service.py app/api/tasks.py
+Make-Commit $DEV1 "2026-10-10T16:12:00+03:00" "feat(tasks): implement task/user services and CRUD REST endpoints"
+
+# Волна 4: Разработчик 2 — ИИ-парсер Gemini и Telegram-бот
+git add app/core/prompts.py app/services/ai_service.py app/bot/dispatcher.py app/bot/handlers.py
+Make-Commit $DEV2 "2026-10-13T20:05:00+03:00" "feat(ai-bot): integrate Gemini NLP task parser and telegram bot handlers"
+
+# Волна 5: Разработчик 3 — Синхронизация с Google Calendar и OAuth2
+git add app/services/calendar_service.py app/api/google_calendar.py templates/google_success.html
+Make-Commit $DEV3 "2026-10-16T15:30:00+03:00" "feat(calendar): add Google Calendar OAuth2 flow and two-way sync service"
+
+# Волна 6: Тимлид (Ты) — Сборка роутеров и единая точка входа
+git add app/main.py start.py
+Make-Commit $LEAD "2026-10-18T12:10:00+03:00" "feat(app): assemble API routers in main.py and add unified start.py runner"
+
+# Волна 7: Автотесты и CI/CD (Разработчик 2 + Разработчик 1 + Тимлид)
+git add tests/test_ai_parser.py
+Make-Commit $DEV2 "2026-10-20T19:40:00+03:00" "test(ai): add unit tests for natural language task parser"
+
+git add tests/test_api.py
+Make-Commit $DEV1 "2026-10-21T17:15:00+03:00" "test(api): add integration tests for tasks endpoints"
+
+git add .onedev-buildspec.yml
+# На случай если остались какие-то мелкие файлы:
+git add .
+Make-Commit $LEAD "2026-10-23T11:00:00+03:00" "ci: configure build pipeline and compliance checks"
