@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from google import genai
 
@@ -15,6 +15,7 @@ from app.services.task_service import (
     update_task, 
     delete_task
 )
+from app.services.ai_service import AIUnavailableError
 from app.services.calendar_service import (
     create_calendar_event,
     update_calendar_event
@@ -32,7 +33,18 @@ async def parse_and_create_task(
     gemini_client: genai.Client = Depends(get_gemini_client),
     current_user: User = Depends(get_current_user)
 ):
-    new_task = await parse_and_save_task(db=db, gemini_client=gemini_client, request=request, current_user=current_user)
+    try:
+        new_task = await parse_and_save_task(
+            db=db,
+            gemini_client=gemini_client,
+            request=request,
+            current_user=current_user,
+        )
+    except AIUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="ИИ-ассистент временно недоступен. Попробуйте позже.",
+        ) from exc
 
     if new_task.deadline:
         try:

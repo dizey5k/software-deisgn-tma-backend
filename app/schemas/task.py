@@ -34,6 +34,7 @@ class TaskParseRequest(BaseModel):
     telegram_id: Optional[int] = Field(None, description="ID пользователя в Telegram")
     chat_context: Optional[str] = Field(None, description="Контекст чата или источника (например, 'Актив-чат')")
 
+
 # outgoing response schema
 class TaskResponse(BaseModel):
     id: uuid.UUID = Field(..., description="Уникальный ID задачи")

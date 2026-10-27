@@ -2,27 +2,26 @@ from datetime import datetime, timezone
 from typing import List
 import uuid
 from google import genai
-from fastapi import HTTPException
-from grpc import Status
-from pyparsing import Optional
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.models import Task, User
 from app.schemas.task import TaskParseRequest, TaskUpdateRequest
 from app.services.ai_service import AIService
-from app.services.user_service import get_or_create_user
 
 async def parse_and_save_task(
     db: AsyncSession, 
     gemini_client: genai.Client, 
     request: TaskParseRequest,
-    current_user: User
+    current_user: User,
+    source_chat_id: int | None = None,
 ) -> Task:
-    ai_data = AIService.parse_task_text(
+    ai_data = await AIService.parse_task_text_async(
         gemini_client=gemini_client,
         message=request.message,
-        chat_context=request.chat_context
+        chat_context=request.chat_context,
+        cache_scope=str(current_user.id),
     )
 
     deadline_val = None
@@ -43,6 +42,7 @@ async def parse_and_save_task(
         category=ai_data.get("category", "WORK"),
         status="TODO"
     )
+    new_task.source_chat_id = source_chat_id
 
     db.add(new_task)
     await db.commit()
@@ -52,8 +52,8 @@ async def parse_and_save_task(
 async def get_user_tasks(
     db: AsyncSession, 
     current_user: User,
-    category: Optional[str] = None,
-    status_filter: Optional[str] = None
+    category: str | None = None,
+    status_filter: str | None = None
 ) -> List[Task]:
     stmt = select(Task).where(Task.user_id == current_user.id)
     
@@ -78,7 +78,7 @@ async def update_task(
     
     if not task:
         raise HTTPException(
-            status_code=Status.HTTP_404_NOT_FOUND,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Задача не найдена или у вас нет к ней доступа"
         )
         
@@ -110,7 +110,7 @@ async def delete_task(
     
     if not task:
         raise HTTPException(
-            status_code=Status.HTTP_404_NOT_FOUND,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Задача не найдена или у вас нет к ней доступа"
         )
         

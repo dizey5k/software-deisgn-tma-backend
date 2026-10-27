@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 from app.models.models import User
 
 async def get_or_create_user(db: AsyncSession, telegram_id: int, username: str = None) -> User:
@@ -27,3 +27,11 @@ async def get_or_create_user(db: AsyncSession, telegram_id: int, username: str =
         await db.refresh(user)
         
     return user
+
+
+async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
+    normalized_username = username.lstrip("@").casefold()
+    result = await db.execute(
+        select(User).where(func.lower(User.username) == normalized_username)
+    )
+    return result.scalars().first()
