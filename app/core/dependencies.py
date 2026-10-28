@@ -6,13 +6,14 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import AsyncGenerator
 from app.core.database import async_session_maker
+from app.services.ai_service import AIUnavailableError
 
 load_dotenv()
 
 def get_gemini_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY has not been set in the environment variables. Please check your .env file.")
+        raise AIUnavailableError("GEMINI_API_KEY is not configured")
     
     proxy_url = os.getenv("PROXY_URL")
     

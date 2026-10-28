@@ -11,12 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.tasks import router as tasks_router
+from app.api.analytics import router as analytics_router
 from app.api.google_calendar import router as google_calendar_router
 from app.api.health import router as health_router
 from app.bot.dispatcher import bot, dp
 from app.bot.handlers import router as bot_router
 from app.core.database import async_session_maker
 from app.models.models import Task
+from app.services.ai_service import AIUnavailableError
 
 load_dotenv()
 dp.include_router(bot_router)
@@ -101,6 +103,18 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
+
+@app.exception_handler(AIUnavailableError)
+async def ai_unavailable_exception_handler(request: Request, exc: AIUnavailableError):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "ИИ-ассистент временно недоступен. Попробуйте позже.",
+            "path": request.url.path,
+        },
+    )
+
 app.include_router(tasks_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
 app.include_router(google_calendar_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
