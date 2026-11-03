@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
-from app.models.models import User
+from sqlalchemy.dialects.postgresql import insert
+from app.models.models import GroupMembership, User
 
 async def get_or_create_user(db: AsyncSession, telegram_id: int, username: str = None) -> User:
     """
@@ -35,3 +36,16 @@ async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
         select(User).where(func.lower(User.username) == normalized_username)
     )
     return result.scalars().first()
+
+
+async def join_group(db: AsyncSession, user: User, chat_id: int) -> bool:
+    statement = (
+        insert(GroupMembership)
+        .values(user_id=user.id, chat_id=chat_id)
+        .on_conflict_do_nothing(
+            index_elements=[GroupMembership.user_id, GroupMembership.chat_id]
+        )
+    )
+    result = await db.execute(statement)
+    await db.commit()
+    return result.rowcount == 1

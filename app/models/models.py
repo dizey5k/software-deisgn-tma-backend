@@ -20,6 +20,27 @@ class User(Base):
 
     # one-many
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
+    group_memberships = relationship(
+        "GroupMembership", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class GroupMembership(Base):
+    __tablename__ = "group_memberships"
+
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    chat_id = Column(BigInteger, primary_key=True)
+    joined_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    user = relationship("User", back_populates="group_memberships")
 
 
 class Task(Base):
@@ -38,6 +59,7 @@ class Task(Base):
     
     source_msg_id = Column(BigInteger, nullable=True)
     source_chat_id = Column(BigInteger, nullable=True)
+    is_shared = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

@@ -46,6 +46,8 @@ class TaskResponse(BaseModel):
     status: TaskStatus = Field(..., description="Текущий статус")
     created_at: datetime = Field(..., description="Дата создания")
     completed_at: Optional[datetime] = None
+    source_chat_id: Optional[int] = None
+    is_shared: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

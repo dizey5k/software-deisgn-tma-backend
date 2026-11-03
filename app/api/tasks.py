@@ -121,7 +121,7 @@ async def edit_task(
 ):
     updated_task = await update_task(db=db, task_id=task_id, update_data=body, current_user=current_user)
     
-    if updated_task.deadline:
+    if updated_task.deadline and not updated_task.is_shared:
         try:
             if updated_task.calendar_event_id:
                 update_calendar_event(

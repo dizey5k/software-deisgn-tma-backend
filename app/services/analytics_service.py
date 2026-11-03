@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import and_, case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import Task, User
+from app.models.models import GroupMembership, Task, User
 from app.schemas.analytics import (
     BurndownPoint,
     CategoryWorkload,
@@ -68,6 +68,7 @@ async def _group_burndown(
         )
         .where(
             Task.source_chat_id.in_(chat_ids),
+            Task.is_shared.is_(True),
             Task.created_at >= start,
             Task.created_at < end,
         )
@@ -81,6 +82,7 @@ async def _group_burndown(
         )
         .where(
             Task.source_chat_id.in_(chat_ids),
+            Task.is_shared.is_(True),
             Task.created_at >= start,
             Task.created_at < end,
             Task.status == "DONE",
@@ -199,13 +201,9 @@ async def get_monthly_analytics(
     )
 
     chat_result = await db.execute(
-        select(Task.source_chat_id)
-        .where(
-            Task.user_id == current_user.id,
-            Task.source_chat_id.is_not(None),
-            Task.source_chat_id < 0,
+        select(GroupMembership.chat_id).where(
+            GroupMembership.user_id == current_user.id
         )
-        .distinct()
     )
     team_burndown = await _group_burndown(
         db,

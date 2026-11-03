@@ -11,7 +11,11 @@ from app.core.database import async_session_maker
 from app.services.task_service import parse_and_save_task
 from app.schemas.task import TaskParseRequest
 from app.core.dependencies import get_gemini_client
-from app.services.user_service import get_or_create_user, get_user_by_username
+from app.services.user_service import (
+    get_or_create_user,
+    get_user_by_username,
+    join_group,
+)
 from app.services.ai_service import AIService, AIUnavailableError
 
 router = Router()
@@ -28,6 +32,20 @@ def _format_created_task(task, heading: str = "Задача успешно со�
         f"⚡ Приоритет: {task.priority}\n"
         f"⏰ Дедлайн: {deadline}"
     )
+
+
+def _parse_task_command(args: str | None) -> tuple[str | None, str] | None:
+    command_text = (args or "").strip()
+    if not command_text:
+        return None
+
+    parts = command_text.split(maxsplit=1)
+    username = parts[0]
+    if username.startswith("@"):
+        return (username, parts[1]) if len(parts) == 2 else None
+
+    return None, command_text
+
 
 @router.message(F.text.startswith("/start"))
 async def cmd_start(message: Message):
@@ -52,23 +70,35 @@ async def handle_group_task(message: Message, command: CommandObject):
         await message.answer("Команда /task доступна в групповых чатах.")
         return
 
-    args = (command.args or "").split(maxsplit=1)
-    if len(args) != 2 or not args[0].startswith("@"):
-        await message.answer("Формат команды: /task @username текст задачи")
+    parsed_command = _parse_task_command(command.args)
+    if parsed_command is None:
+        await message.answer(
+            "Формат: /task текст задачи (общая для группы) "
+            "или /task @username текст задачи (личная)."
+        )
         return
 
-    recipient_username, task_text = args
+    recipient_username, task_text = parsed_command
+    is_personal = recipient_username is not None
     async with async_session_maker() as db:
-        recipient = await get_user_by_username(db, recipient_username)
-        if recipient is None:
-            await message.answer(
-                f"Не нашёл {recipient_username}. Попросите адресата открыть бота командой /start, "
-                "затем повторите назначение."
+        if is_personal:
+            task_owner = await get_user_by_username(db, recipient_username)
+            if task_owner is None:
+                await message.answer(
+                    f"Не нашёл {recipient_username}. Попросите адресата открыть бота командой /start, "
+                    "затем повторите назначение."
+                )
+                return
+        else:
+            task_owner = await get_or_create_user(
+                db,
+                telegram_id=message.from_user.id,
+                username=message.from_user.username,
             )
-            return
+            await join_group(db, task_owner, message.chat.id)
 
         processing_msg = await message.answer(
-            f"⏳ Создаю задачу для {recipient_username}..."
+            "⏳ Создаю задачу..."
         )
         try:
             task = await parse_and_save_task(
@@ -76,11 +106,12 @@ async def handle_group_task(message: Message, command: CommandObject):
                 gemini_client=get_gemini_client(),
                 request=TaskParseRequest(
                     message=task_text,
-                    telegram_id=recipient.telegram_id,
+                    telegram_id=task_owner.telegram_id,
                     chat_context=f"Telegram group chat {message.chat.id}",
                 ),
-                current_user=recipient,
+                current_user=task_owner,
                 source_chat_id=message.chat.id,
+                is_shared=not is_personal,
             )
         except AIUnavailableError:
             await processing_msg.edit_text(
@@ -92,8 +123,32 @@ async def handle_group_task(message: Message, command: CommandObject):
             await processing_msg.edit_text("Не удалось создать задачу. Попробуйте позже.")
             return
 
-    await processing_msg.edit_text(
-        _format_created_task(task, f"Задача назначена @{recipient.username or recipient_username.lstrip('@')}.")
+    heading = (
+        f"Задача назначена @{task_owner.username or recipient_username.lstrip('@')}."
+        if is_personal
+        else "Совместная задача создана для участников группы."
+    )
+    await processing_msg.edit_text(_format_created_task(task, heading))
+
+
+@router.message(Command("join"))
+async def handle_group_join(message: Message):
+    if message.chat.type not in {"group", "supergroup"}:
+        await message.answer("Команда /join доступна только в групповых чатах.")
+        return
+
+    async with async_session_maker() as db:
+        user = await get_or_create_user(
+            db,
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+        )
+        joined = await join_group(db, user, message.chat.id)
+
+    await message.answer(
+        "Вы присоединились к совместным задачам этого чата."
+        if joined
+        else "Вы уже видите совместные задачи этого чата."
     )
 
 

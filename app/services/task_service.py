@@ -4,11 +4,26 @@ import uuid
 from google import genai
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
-from app.models.models import Task, User
+from app.models.models import GroupMembership, Task, User
 from app.schemas.task import TaskParseRequest, TaskUpdateRequest
 from app.services.ai_service import AIService
+
+
+def _visible_tasks_filter(current_user: User):
+    return or_(
+        Task.user_id == current_user.id,
+        and_(
+            Task.is_shared.is_(True),
+            Task.source_chat_id.in_(
+                select(GroupMembership.chat_id).where(
+                    GroupMembership.user_id == current_user.id
+                )
+            ),
+        ),
+    )
+
 
 async def parse_and_save_task(
     db: AsyncSession, 
@@ -16,12 +31,15 @@ async def parse_and_save_task(
     request: TaskParseRequest,
     current_user: User,
     source_chat_id: int | None = None,
+    is_shared: bool = False,
 ) -> Task:
     ai_data = await AIService.parse_task_text_async(
         gemini_client=gemini_client,
         message=request.message,
         chat_context=request.chat_context,
-        cache_scope=str(current_user.id),
+        cache_scope=(
+            f"group:{source_chat_id}" if is_shared else str(current_user.id)
+        ),
     )
 
     deadline_val = None
@@ -43,6 +61,7 @@ async def parse_and_save_task(
         status="TODO"
     )
     new_task.source_chat_id = source_chat_id
+    new_task.is_shared = is_shared
 
     db.add(new_task)
     await db.commit()
@@ -55,7 +74,7 @@ async def get_user_tasks(
     category: str | None = None,
     status_filter: str | None = None
 ) -> List[Task]:
-    stmt = select(Task).where(Task.user_id == current_user.id)
+    stmt = select(Task).where(_visible_tasks_filter(current_user))
     
     if category:
         stmt = stmt.where(Task.category == category)
@@ -72,7 +91,10 @@ async def update_task(
     update_data: TaskUpdateRequest,
     current_user: User
 ) -> Task:
-    stmt = select(Task).where(Task.id == task_id, Task.user_id == current_user.id)
+    stmt = select(Task).where(
+        Task.id == task_id,
+        _visible_tasks_filter(current_user),
+    )
     result = await db.execute(stmt)
     task = result.scalars().first()
     
@@ -104,7 +126,10 @@ async def delete_task(
     task_id: uuid.UUID,
     current_user: User
 ) -> None:
-    stmt = select(Task).where(Task.id == task_id, Task.user_id == current_user.id)
+    stmt = select(Task).where(
+        Task.id == task_id,
+        _visible_tasks_filter(current_user),
+    )
     result = await db.execute(stmt)
     task = result.scalars().first()
     
