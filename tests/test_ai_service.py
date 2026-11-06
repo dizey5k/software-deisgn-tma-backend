@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.prompts import get_task_parsing_prompt
 from app.services.ai_service import AIService, AIUnavailableError
 
 
@@ -50,6 +51,18 @@ def test_ai_cache_is_not_shared_between_users():
     AIService.parse_task_text(client, "Prepare a report", cache_scope="user-b")
 
     assert models.calls == 2
+
+
+def test_task_prompt_uses_requested_timezone_offset():
+    prompt = get_task_parsing_prompt(
+        chat_context="Telegram private chat",
+        message_text="завтра в 15:00 созвон",
+        timezone_name="Europe/Berlin",
+    )
+
+    assert "Europe/Berlin" in prompt
+    assert "UTC+01:00" in prompt or "UTC+02:00" in prompt
+    assert "не конвертируй в UTC" in prompt
 
 
 def test_ai_circuit_breaker_opens_after_repeated_failures():

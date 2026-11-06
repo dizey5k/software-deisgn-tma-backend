@@ -3,7 +3,9 @@ import hmac
 import hashlib
 import urllib.parse
 import json
-from fastapi import Depends, HTTPException, Security, status, Query
+import logging
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from fastapi import Depends, HTTPException, Request, Security, status, Query
 from typing import Optional
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,7 @@ from app.models.models import User
 from app.services.user_service import get_or_create_user
 
 auth_header_scheme = APIKeyHeader(name="Authorization", auto_error=True)
+logger = logging.getLogger(__name__)
 
 def validate_telegram_data(init_data: str) -> dict:
     """cryptographic validation of Telegram data"""
@@ -42,6 +45,7 @@ def validate_telegram_data(init_data: str) -> dict:
     return json.loads(parsed_data["user"])
 
 async def get_current_user(
+    request: Request,
     auth_header: Optional[str] = Security(auth_header_scheme),
     token: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_async_session)
@@ -73,5 +77,16 @@ async def get_current_user(
     
     if not user:
         raise HTTPException(status_code=401, detail="Пользователь не найден")
+
+    timezone_name = request.headers.get("X-Timezone")
+    if timezone_name and timezone_name != user.timezone_name:
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            logger.warning("Ignoring invalid client timezone: %s", timezone_name)
+        else:
+            user.timezone_name = timezone_name
+            await db.commit()
+            await db.refresh(user)
         
     return user

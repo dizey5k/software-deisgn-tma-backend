@@ -54,13 +54,14 @@ class AIService:
         message: str,
         chat_context: str | None = None,
         cache_scope: str = "",
+        timezone_name: str = "Europe/Moscow",
     ) -> dict:
         """
         format prompt, send request Gemini and gives parsed JSON.
         """
         resolved_context = chat_context or "Общий чат"
         cache_key = hashlib.sha256(
-            f"{cache_scope}\0{resolved_context}\0{message}".encode("utf-8")
+            f"{cache_scope}\0{timezone_name}\0{resolved_context}\0{message}".encode("utf-8")
         ).hexdigest()
 
         with AIService._lock:
@@ -75,7 +76,8 @@ class AIService:
         # Получаем готовый промпт со свежим временем
         formatted_prompt = get_task_parsing_prompt(
             chat_context=resolved_context,
-            message_text=message
+            message_text=message,
+            timezone_name=timezone_name,
         )
 
         try:
@@ -143,6 +145,7 @@ class AIService:
         message: str,
         chat_context: str | None = None,
         cache_scope: str = "",
+        timezone_name: str = "Europe/Moscow",
     ) -> dict:
         return await asyncio.to_thread(
             AIService.parse_task_text,
@@ -150,4 +153,5 @@ class AIService:
             message,
             chat_context,
             cache_scope,
+            timezone_name,
         )

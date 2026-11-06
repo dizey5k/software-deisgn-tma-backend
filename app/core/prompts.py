@@ -1,17 +1,32 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-def get_task_parsing_prompt(chat_context: str, message_text: str) -> str:
-    msk_tz = timezone(timedelta(hours=3))
-    current_time_msk = datetime.now(msk_tz).strftime("%Y-%m-%d %H:%M")
+
+def get_task_parsing_prompt(
+    chat_context: str,
+    message_text: str,
+    timezone_name: str = "Europe/Moscow",
+) -> str:
+    try:
+        user_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        user_timezone = ZoneInfo("Europe/Moscow")
+        timezone_name = "Europe/Moscow"
+    current_time = datetime.now(user_timezone)
+    utc_offset = current_time.strftime("%z")
+    utc_offset = f"{utc_offset[:3]}:{utc_offset[3:]}"
+    current_local_time = current_time.strftime("%Y-%m-%d %H:%M")
 
     return f"""
 Ты — умный ассистент-парсер. Твоя задача — извлечь данные из текста и вернуть строго JSON.
 
 ВАЖНО — КОНТЕКСТ ВРЕМЕНИ:
-Текущая дата и время: {current_time_msk} (Московское время, часовой пояс UTC+3).
-Все дедлайны (deadline) ты должен возвращать строго в формате ISO 8601 со смещением +03:00.
-Например, если пользователь просит поставить задачу "сегодня на 14:00", ты должен вернуть "YYYY-MM-DDT14:00:00+03:00".
-Если дата понятна, но время не указано (например, "сделать завтра"), ставь конец дня: "YYYY-MM-DDT23:59:59+03:00".
+Текущая дата и время пользователя: {current_local_time} (часовой пояс {timezone_name}, смещение UTC{utc_offset}).
+Интерпретируй относительные даты и время в часовом поясе пользователя.
+Все дедлайны возвращай в ISO 8601 со смещением пользователя ({utc_offset}).
+Если время явно указано, сохраняй именно его; не заменяй его текущим временем и не конвертируй в UTC.
+Если дата понятна, но время не указано, ставь конец этого локального дня: "YYYY-MM-DDT23:59:59{utc_offset}".
+Не придумывай дату или время, которых пользователь не указал и которые нельзя однозначно вывести из текста.
 
 Контекст источника (чат/отправитель): {chat_context}
 
@@ -25,7 +40,7 @@ def get_task_parsing_prompt(chat_context: str, message_text: str) -> str:
 {{
     "title": "Краткое название задачи",
     "description"(строка или null): подробное описание, дополнительные детали или подзадачи, если пользователь их указал
-    "deadline": "Дата в формате ISO8601 (обязательно с +03:00) или null",
+    "deadline": "Дата в формате ISO8601 с локальным смещением {utc_offset} или null",
     "priority": "HIGH, MEDIUM или LOW (по умолчанию MEDIUM)",
     "category": "WORK, PROF, STUDY или PERSONAL"
 }}

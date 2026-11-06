@@ -1,10 +1,11 @@
 import asyncio
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.dml import Insert
 
-from app.bot.handlers import _parse_task_command
+from app.bot.handlers import _format_created_task, _parse_task_command
 from app.services.task_service import get_user_tasks
 from app.services.user_service import join_group
 
@@ -49,6 +50,24 @@ def test_task_command_distinguishes_shared_and_personal_tasks():
     )
     assert _parse_task_command("@oleg") is None
     assert _parse_task_command("  ") is None
+
+
+def test_bot_formats_deadline_in_users_timezone():
+    task = type(
+        "TaskRef",
+        (),
+        {
+            "deadline": datetime(2026, 11, 11, 15, tzinfo=timezone.utc),
+            "title": "Project",
+            "description": None,
+            "category": "WORK",
+            "priority": "HIGH",
+        },
+    )()
+
+    text = _format_created_task(task, timezone_name="Europe/Moscow")
+
+    assert "Дедлайн: 11.11.2026 18:00" in text
 
 
 def test_join_group_is_idempotent():

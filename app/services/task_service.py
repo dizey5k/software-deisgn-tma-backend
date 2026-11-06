@@ -4,7 +4,7 @@ import uuid
 from google import genai
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, desc, or_, select
 
 from app.models.models import GroupMembership, Task, User
 from app.schemas.task import TaskParseRequest, TaskUpdateRequest
@@ -40,6 +40,7 @@ async def parse_and_save_task(
         cache_scope=(
             f"group:{source_chat_id}" if is_shared else str(current_user.id)
         ),
+        timezone_name=current_user.timezone_name or "Europe/Moscow",
     )
 
     deadline_val = None
@@ -74,7 +75,11 @@ async def get_user_tasks(
     category: str | None = None,
     status_filter: str | None = None
 ) -> List[Task]:
-    stmt = select(Task).where(_visible_tasks_filter(current_user))
+    stmt = (
+        select(Task)
+        .where(_visible_tasks_filter(current_user))
+        .order_by(desc(Task.created_at))
+    )
     
     if category:
         stmt = stmt.where(Task.category == category)

@@ -1,7 +1,7 @@
 import calendar
 from datetime import date, datetime, timezone
 
-from sqlalchemy import and_, case, extract, func, select
+from sqlalchemy import and_, case, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import GroupMembership, Task, User
@@ -27,19 +27,19 @@ def _build_burndown(
     month: int,
     created_counts: dict[int, int],
     completed_counts: dict[int, int],
+    opening_count: int = 0,
 ) -> list[BurndownPoint]:
-    running_created = 0
-    running_completed = 0
+    remaining = opening_count
     points = []
     for day in range(1, calendar.monthrange(year, month)[1] + 1):
-        running_created += created_counts.get(day, 0)
-        running_completed += completed_counts.get(day, 0)
+        remaining += created_counts.get(day, 0)
+        remaining = max(remaining - completed_counts.get(day, 0), 0)
         points.append(
             BurndownPoint(
                 date=date(year, month, day),
                 created_count=created_counts.get(day, 0),
                 completed_count=completed_counts.get(day, 0),
-                remaining_count=max(running_created - running_completed, 0),
+                remaining_count=remaining,
             )
         )
     return points
@@ -83,17 +83,28 @@ async def _group_burndown(
         .where(
             Task.source_chat_id.in_(chat_ids),
             Task.is_shared.is_(True),
-            Task.created_at >= start,
-            Task.created_at < end,
             Task.status == "DONE",
             Task.completed_at >= start,
             Task.completed_at < end,
         )
         .group_by(Task.source_chat_id, extract("day", Task.completed_at))
     )
+    opening_result = await db.execute(
+        select(Task.source_chat_id, func.count(Task.id))
+        .where(
+            Task.source_chat_id.in_(chat_ids),
+            Task.is_shared.is_(True),
+            Task.created_at < start,
+            or_(Task.status != "DONE", Task.completed_at >= start),
+        )
+        .group_by(Task.source_chat_id)
+    )
 
     created_by_chat: dict[int, dict[int, int]] = {chat_id: {} for chat_id in chat_ids}
     completed_by_chat: dict[int, dict[int, int]] = {chat_id: {} for chat_id in chat_ids}
+    opening_by_chat = {chat_id: 0 for chat_id in chat_ids}
+    for chat_id, count in opening_result:
+        opening_by_chat[chat_id] = int(count)
     for chat_id, day, count in created_result:
         created_by_chat[chat_id][int(day)] = int(count)
     for chat_id, day, count in completed_result:
@@ -107,6 +118,7 @@ async def _group_burndown(
                 month,
                 created_by_chat[chat_id],
                 completed_by_chat[chat_id],
+                opening_by_chat[chat_id],
             ),
         )
         for chat_id in sorted(chat_ids)
@@ -172,6 +184,16 @@ async def get_monthly_analytics(
         for category, count in category_result
     ]
 
+    opening_result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.user_id == current_user.id,
+            Task.is_shared.is_(False),
+            Task.created_at < start,
+            or_(Task.status != "DONE", Task.completed_at >= start),
+        )
+    )
+    opening_count = int(opening_result.scalar_one() or 0)
+
     created_result = await db.execute(
         select(extract("day", Task.created_at), func.count(Task.id))
         .where(
@@ -185,8 +207,6 @@ async def get_monthly_analytics(
         select(extract("day", Task.completed_at), func.count(Task.id))
         .where(
             Task.user_id == current_user.id,
-            Task.created_at >= start,
-            Task.created_at < end,
             Task.status == "DONE",
             Task.completed_at >= start,
             Task.completed_at < end,
@@ -198,6 +218,7 @@ async def get_monthly_analytics(
         month,
         _day_counts(created_result),
         _day_counts(completed_daily_result),
+        opening_count,
     )
 
     chat_result = await db.execute(

@@ -2,6 +2,8 @@ import os
 import tempfile
 import logging
 import asyncio
+from datetime import timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Router, F
 from aiogram.filters import Command, CommandObject
@@ -22,8 +24,21 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-def _format_created_task(task, heading: str = "Задача успешно создана!") -> str:
-    deadline = task.deadline.strftime("%d.%m.%Y %H:%M") if task.deadline else "Без дедлайна"
+def _format_created_task(
+    task,
+    heading: str = "Задача успешно создана!",
+    timezone_name: str = "Europe/Moscow",
+) -> str:
+    deadline = "Без дедлайна"
+    if task.deadline:
+        try:
+            user_timezone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            user_timezone = ZoneInfo("Europe/Moscow")
+        task_deadline = task.deadline
+        if task_deadline.tzinfo is None:
+            task_deadline = task_deadline.replace(tzinfo=timezone.utc)
+        deadline = task_deadline.astimezone(user_timezone).strftime("%d.%m.%Y %H:%M")
     return (
         f"✅ {heading}\n\n"
         f"📌 Название: {task.title}\n"
@@ -128,7 +143,9 @@ async def handle_group_task(message: Message, command: CommandObject):
         if is_personal
         else "Совместная задача создана для участников группы."
     )
-    await processing_msg.edit_text(_format_created_task(task, heading))
+    await processing_msg.edit_text(
+        _format_created_task(task, heading, task_owner.timezone_name)
+    )
 
 
 @router.message(Command("join"))
@@ -150,6 +167,40 @@ async def handle_group_join(message: Message):
         if joined
         else "Вы уже видите совместные задачи этого чата."
     )
+
+
+@router.message(Command("timezone"))
+async def handle_timezone(message: Message, command: CommandObject):
+    if message.chat.type != "private":
+        await message.answer("Настроить часовой пояс можно в личном чате с ботом.")
+        return
+
+    timezone_name = (command.args or "").strip()
+    async with async_session_maker() as db:
+        user = await get_or_create_user(
+            db,
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+        )
+        if not timezone_name:
+            await message.answer(
+                f"Текущий часовой пояс: {user.timezone_name}\n"
+                "Указать часовой пояс можно так: /timezone Europe/Moscow"
+            )
+            return
+
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            await message.answer(
+                "Неизвестный часовой пояс. Пример: /timezone Europe/Moscow"
+            )
+            return
+
+        user.timezone_name = timezone_name
+        await db.commit()
+
+    await message.answer(f"Часовой пояс установлен: {timezone_name}")
 
 
 @router.message((F.text & ~F.text.startswith("/")) | (F.caption & ~F.caption.startswith("/")))
@@ -190,7 +241,7 @@ async def handle_task_text(message: Message):
         await message.bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=processing_msg.message_id,
-            text=_format_created_task(task),
+            text=_format_created_task(task, timezone_name=user.timezone_name),
         )
     except AIUnavailableError:
         await processing_msg.edit_text(
@@ -261,7 +312,7 @@ async def handle_voice_message(message: Message):
         await message.bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=processing_msg.message_id,
-            text=f"{_format_created_task(task, 'Голосовая задача успешно создана!')}\n\n"
+            text=f"{_format_created_task(task, 'Голосовая задача успешно создана!', user.timezone_name)}\n\n"
             f"🗣 Оригинал: {recognized_text}",
         )
 
