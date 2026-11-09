@@ -51,12 +51,13 @@ def _day_counts(rows) -> dict[int, int]:
 
 async def _group_burndown(
     db: AsyncSession,
-    chat_ids: list[int],
+    chat_titles: dict[int, str | None],
     year: int,
     month: int,
     start: datetime,
     end: datetime,
 ) -> list[TeamBurndown]:
+    chat_ids = list(chat_titles)
     if not chat_ids:
         return []
 
@@ -113,6 +114,7 @@ async def _group_burndown(
     return [
         TeamBurndown(
             chat_id=str(chat_id),
+            chat_title=chat_titles[chat_id],
             points=_build_burndown(
                 year,
                 month,
@@ -222,13 +224,21 @@ async def get_monthly_analytics(
     )
 
     chat_result = await db.execute(
-        select(GroupMembership.chat_id).where(
+        select(
+            GroupMembership.chat_id,
+            func.max(GroupMembership.chat_title),
+        )
+        .where(
             GroupMembership.user_id == current_user.id
         )
+        .group_by(GroupMembership.chat_id)
     )
     team_burndown = await _group_burndown(
         db,
-        [int(chat_id) for chat_id in chat_result.scalars()],
+        {
+            int(chat_id): chat_title
+            for chat_id, chat_title in chat_result
+        },
         year,
         month,
         start,

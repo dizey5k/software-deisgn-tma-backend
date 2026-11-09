@@ -1,9 +1,13 @@
 import asyncio
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.services.analytics_service import _build_burndown, get_monthly_analytics
+from app.services.analytics_service import (
+    _build_burndown,
+    _group_burndown,
+    get_monthly_analytics,
+)
 
 
 class FakeResult:
@@ -72,3 +76,30 @@ def test_monthly_analytics_calculates_rates_and_daily_burndown():
     assert result.burndown[1].remaining_count == 5
     assert len(result.burndown) == 28
     assert result.team_burndown == []
+
+
+def test_team_burndown_contains_group_title():
+    class GroupSession:
+        def __init__(self):
+            self.results = [
+                FakeResult(rows=[]),
+                FakeResult(rows=[]),
+                FakeResult(rows=[]),
+            ]
+
+        async def execute(self, _statement):
+            return self.results.pop(0)
+
+    teams = asyncio.run(
+        _group_burndown(
+            GroupSession(),
+            {-100123: "Команда проекта"},
+            2026,
+            2,
+            datetime(2026, 2, 1),
+            datetime(2026, 3, 1),
+        )
+    )
+
+    assert teams[0].chat_id == "-100123"
+    assert teams[0].chat_title == "Команда проекта"

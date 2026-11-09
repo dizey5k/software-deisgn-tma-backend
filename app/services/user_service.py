@@ -38,12 +38,20 @@ async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
     return result.scalars().first()
 
 
-async def join_group(db: AsyncSession, user: User, chat_id: int) -> bool:
+async def join_group(
+    db: AsyncSession,
+    user: User,
+    chat_id: int,
+    chat_title: str | None = None,
+) -> bool:
+    membership_insert = insert(GroupMembership)
     statement = (
-        insert(GroupMembership)
-        .values(user_id=user.id, chat_id=chat_id)
-        .on_conflict_do_nothing(
-            index_elements=[GroupMembership.user_id, GroupMembership.chat_id]
+        membership_insert
+        .values(user_id=user.id, chat_id=chat_id, chat_title=chat_title)
+        .on_conflict_do_update(
+            index_elements=[GroupMembership.user_id, GroupMembership.chat_id],
+            set_={"chat_title": membership_insert.excluded.chat_title},
+            where=membership_insert.excluded.chat_title.is_not(None),
         )
     )
     result = await db.execute(statement)

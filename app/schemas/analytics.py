@@ -16,6 +16,7 @@ class BurndownPoint(BaseModel):
 
 class TeamBurndown(BaseModel):
     chat_id: str
+    chat_title: str | None = None
     points: list[BurndownPoint]
 
 

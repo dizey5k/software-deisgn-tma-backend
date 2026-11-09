@@ -35,6 +35,7 @@ class GroupMembership(Base):
         primary_key=True,
     )
     chat_id = Column(BigInteger, primary_key=True)
+    chat_title = Column(String(255), nullable=True)
     joined_at = Column(
         DateTime(timezone=True),
         nullable=False,

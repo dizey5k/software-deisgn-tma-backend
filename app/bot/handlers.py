@@ -110,7 +110,12 @@ async def handle_group_task(message: Message, command: CommandObject):
                 telegram_id=message.from_user.id,
                 username=message.from_user.username,
             )
-            await join_group(db, task_owner, message.chat.id)
+            await join_group(
+                db,
+                task_owner,
+                message.chat.id,
+                message.chat.title,
+            )
 
         processing_msg = await message.answer(
             "⏳ Создаю задачу..."
@@ -160,12 +165,16 @@ async def handle_group_join(message: Message):
             telegram_id=message.from_user.id,
             username=message.from_user.username,
         )
-        joined = await join_group(db, user, message.chat.id)
+        joined = await join_group(
+            db,
+            user,
+            message.chat.id,
+            message.chat.title,
+        )
 
     await message.answer(
-        "Вы присоединились к совместным задачам этого чата."
-        if joined
-        else "Вы уже видите совместные задачи этого чата."
+        f"Готово: теперь вы видите совместные задачи чата "
+        f"«{message.chat.title or 'Групповой чат'}»."
     )
 
 

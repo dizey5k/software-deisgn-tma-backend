@@ -26,15 +26,16 @@ class FakeSession:
         self.commits = 0
         self.statement = None
         self.memberships = set()
+        self.chat_titles = {}
 
     async def execute(self, statement):
         self.statement = statement
         if isinstance(statement, Insert):
             values = statement.compile().params
             membership = (values["user_id"], values["chat_id"])
-            if membership in self.memberships:
-                return FakeResult()
             self.memberships.add(membership)
+            if values["chat_title"] is not None:
+                self.chat_titles[membership] = values["chat_title"]
             return FakeResult(rowcount=1)
         return FakeResult()
 
@@ -74,12 +75,13 @@ def test_join_group_is_idempotent():
     user = type("UserRef", (), {"id": uuid4()})()
     session = FakeSession()
 
-    first_join = asyncio.run(join_group(session, user, -100123))
-    second_join = asyncio.run(join_group(session, user, -100123))
+    first_join = asyncio.run(join_group(session, user, -100123, "Team tasks"))
+    second_join = asyncio.run(join_group(session, user, -100123, "Renamed team"))
 
     assert first_join is True
-    assert second_join is False
+    assert second_join is True
     assert session.commits == 2
+    assert session.chat_titles[(user.id, -100123)] == "Renamed team"
 
 
 def test_task_list_query_includes_only_shared_tasks_from_joined_chats():
