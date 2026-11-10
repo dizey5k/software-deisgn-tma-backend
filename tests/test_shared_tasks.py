@@ -5,7 +5,11 @@ from uuid import uuid4
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.dml import Insert
 
-from app.bot.handlers import _format_created_task, _parse_task_command
+from app.bot.handlers import (
+    _format_created_task,
+    _mini_app_keyboard,
+    _parse_task_command,
+)
 from app.services.task_service import get_user_tasks
 from app.services.user_service import join_group
 
@@ -51,6 +55,14 @@ def test_task_command_distinguishes_shared_and_personal_tasks():
     )
     assert _parse_task_command("@oleg") is None
     assert _parse_task_command("  ") is None
+
+
+def test_group_task_keyboard_opens_group_tasks_in_mini_app(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_MINI_APP_URL", raising=False)
+    button = _mini_app_keyboard().inline_keyboard[0][0]
+
+    assert button.text == "📋 Открыть групповые задачи"
+    assert button.url == "https://t.me/TM_dizZy_bot?startapp=group"
 
 
 def test_bot_formats_deadline_in_users_timezone():

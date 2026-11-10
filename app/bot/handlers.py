@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Router, F
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.core.database import async_session_maker
 from app.services.task_service import parse_and_save_task
@@ -22,6 +22,22 @@ from app.services.ai_service import AIService, AIUnavailableError
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+def _mini_app_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📋 Открыть групповые задачи",
+                    url=os.getenv(
+                        "TELEGRAM_MINI_APP_URL",
+                        "https://t.me/TM_dizZy_bot?startapp=group",
+                    ),
+                )
+            ]
+        ]
+    )
 
 
 def _format_created_task(
@@ -149,7 +165,8 @@ async def handle_group_task(message: Message, command: CommandObject):
         else "Совместная задача создана для участников группы."
     )
     await processing_msg.edit_text(
-        _format_created_task(task, heading, task_owner.timezone_name)
+        _format_created_task(task, heading, task_owner.timezone_name),
+        reply_markup=_mini_app_keyboard() if not is_personal else None,
     )
 
 
@@ -174,7 +191,8 @@ async def handle_group_join(message: Message):
 
     await message.answer(
         f"Готово: теперь вы видите совместные задачи чата "
-        f"«{message.chat.title or 'Групповой чат'}»."
+        f"«{message.chat.title or 'Групповой чат'}».",
+        reply_markup=_mini_app_keyboard(),
     )
 
 
